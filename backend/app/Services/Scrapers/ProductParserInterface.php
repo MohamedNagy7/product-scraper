@@ -9,7 +9,7 @@ interface ProductParserInterface
      *
      * Returns null if no product could be found on the page.
      *
-     * @return array{title: ?string, price: ?string, currency: ?string, image_url: ?string, source_url: string}|null
+     * @return array{title: ?string, price: ?string, currency: ?string, image_url: ?string, image_urls: array<int, string>, source_url: string}|null
      */
     public function parse(string $html, string $url): ?array;
 }

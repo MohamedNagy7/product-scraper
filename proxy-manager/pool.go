@@ -122,3 +122,19 @@ func (p *Pool) ReportSuccess(address string) bool {
 	}
 	return false
 }
+
+func (p *Pool) SetVerified(address string, healthy bool) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for _, proxy := range p.proxies {
+		if proxy.Address == address {
+			proxy.Healthy = healthy
+			if healthy {
+				proxy.Failures = 0
+			}
+			return true
+		}
+	}
+	return false
+}

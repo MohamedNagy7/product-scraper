@@ -18,11 +18,14 @@ class JsonLdProductParser implements ProductParserInterface
             return null;
         }
 
+        $images = $this->extractImages($product);
+
         return [
             'title' => $product['name'] ?? null,
             'price' => $this->extractPrice($product),
             'currency' => $product['offers']['priceCurrency'] ?? null,
-            'image_url' => $this->extractImage($product),
+            'image_url' => $images[0] ?? null,
+            'image_urls' => $images,
             'source_url' => $url,
         ];
     }
@@ -127,34 +130,54 @@ class JsonLdProductParser implements ProductParserInterface
         return null;
     }
 
-    private function extractImage(array $node): ?string
+    private function extractImages(array $node): array
     {
         $image = $node['image'] ?? null;
+        $urls = [];
 
         if (is_string($image)) {
-            return $image;
-        }
-
-        if (!is_array($image)) {
-            return null;
-        }
-
-        if (isset($image['contentUrl'])) {
-            return is_array($image['contentUrl'])
-                ? ($image['contentUrl'][0] ?? null)
-                : $image['contentUrl'];
-        }
-
-        if (array_is_list($image)) {
-            $first = $image[0] ?? null;
-
-            if (is_string($first)) {
-                return $first;
+            $urls[] = $image;
+        } elseif (is_array($image)) {
+            if (isset($image['contentUrl'])) {
+                // Single ImageObject. contentUrl itself can be one URL or,
+                // as seen on Jumia, an array of every product photo.
+                $urls = array_merge($urls, $this->normalizeUrlField($image['contentUrl']));
+            } elseif (array_is_list($image)) {
+                // Array of images: could be plain URL strings, ImageObjects,
+                // or a mix of both.
+                foreach ($image as $item) {
+                    if (is_string($item)) {
+                        $urls[] = $item;
+                    } elseif (is_array($item)) {
+                        if (isset($item['contentUrl'])) {
+                            $urls = array_merge($urls, $this->normalizeUrlField($item['contentUrl']));
+                        } elseif (isset($item['url'])) {
+                            $urls = array_merge($urls, $this->normalizeUrlField($item['url']));
+                        }
+                    }
+                }
+            } elseif (isset($image['url'])) {
+                $urls = array_merge($urls, $this->normalizeUrlField($image['url']));
             }
-
-            return $first['contentUrl'][0] ?? $first['url'] ?? null;
         }
 
-        return $image['url'] ?? null;
+        return array_values(array_unique(array_filter($urls, 'is_string')));
+    }
+
+    /**
+     * A single JSON-LD field (contentUrl, url, etc.) can hold either one
+     * URL string or an array of them. Normalize either shape into a list.
+     */
+    private function normalizeUrlField(mixed $value): array
+    {
+        if (is_string($value)) {
+            return [$value];
+        }
+
+        if (is_array($value)) {
+            return array_values(array_filter($value, 'is_string'));
+        }
+
+        return [];
     }
 }

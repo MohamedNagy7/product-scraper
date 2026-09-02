@@ -13,7 +13,7 @@ class ProductController extends Controller
     {
         $products = Product::with('images')
             ->latest('created_at')
-            ->get();
+            ->paginate(10);
 
         return response()->json($products);
     }
@@ -21,11 +21,19 @@ class ProductController extends Controller
     public function scrape(Request $request, ProductScraperService $scraper): JsonResponse
     {
         $validated = $request->validate([
-            'url' => ['required', 'url'],
+            'urls' => ['required', 'array', 'min:1', 'max:' . ProductScraperService::MAX_BATCH_SIZE],
+            'urls.*' => ['required', 'url', 'distinct'],
         ]);
 
-        $product = $scraper->scrapeAndStore($validated['url']);
+        $results = $scraper->scrapeAndStoreMany($validated['urls']);
 
-        return response()->json($product, 201);
+        $successCount = collect($results)->where('status', 'success')->count();
+        $status = match (true) {
+            $successCount === count($results) => 201,
+            $successCount === 0 => 422,
+            default => 207,
+        };
+
+        return response()->json(['results' => $results], $status);
     }
 }
