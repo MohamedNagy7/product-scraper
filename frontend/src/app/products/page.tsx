@@ -18,8 +18,6 @@ type Product = {
   images: ProductImage[];
 };
 
-// Shape returned by Laravel's paginate() — the API now returns this instead
-// of a bare array.
 type PaginatedResponse<T> = {
   data: T[];
   links: {
@@ -111,7 +109,19 @@ export default function ProductsPage() {
         <h1 className="page-title">Scraper</h1>
       </div>
 
-      {loading && <p className="empty-state">Loading products…</p>}
+      {loading && (
+        <div className="grid" aria-hidden="true">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="card card-skeleton">
+              <div className="card-image skeleton-block" />
+              <div className="card-content">
+                <div className="skeleton-line skeleton-line-title" />
+                <div className="skeleton-line skeleton-line-price" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!loading && error && (
         <p className="error-state" role="alert">
@@ -152,13 +162,15 @@ export default function ProductsPage() {
                       {product.images.map((image) => (
                         <button
                           key={image.id}
+                          type="button"
                           className={`thumbnail-btn ${currentImage?.id === image.id ? 'active' : ''}`}
                           onClick={() => handleImageSelect(product.id, image)}
-                          aria-label={`View ${image.is_primary ? 'primary' : ''} image`}
+                          aria-label={image.is_primary ? 'View primary image' : 'View image'}
+                          aria-pressed={currentImage?.id === image.id}
                         >
                           <Image
                             src={image.image_url}
-                            alt={`${product.title} - thumbnail`}
+                            alt=""
                             fill
                             sizes="60px"
                             style={{ objectFit: 'cover' }}
@@ -176,7 +188,13 @@ export default function ProductsPage() {
                     <h2 className="card-title">{product.title}</h2>
                     <p className="card-price">{product.price}</p>
                     {hasMultipleImages && (
-                      <span className="image-count">{product.images.length} images</span>
+                      <span className="image-count">
+                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                          <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h1.379a1.5 1.5 0 0 0 1.06-.44l.122-.12A1.5 1.5 0 0 1 9.12 3h1.759a1.5 1.5 0 0 1 1.06.44l.122.12a1.5 1.5 0 0 0 1.06.44H14.5A1.5 1.5 0 0 1 16 5.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 4 12.5v-7Z" />
+                          <circle cx="10" cy="9" r="2.25" fill="var(--card-bg, #fff)" />
+                        </svg>
+                        {product.images.length} images
+                      </span>
                     )}
                   </div>
                 </article>
@@ -188,16 +206,19 @@ export default function ProductsPage() {
             <nav className="pagination" aria-label="Product pages">
               <button
                 type="button"
+                className="pagination-btn"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={meta.current_page <= 1}
               >
                 Previous
               </button>
               <span className="pagination-status">
-                Page {meta.current_page} of {meta.last_page} ({meta.total} products)
+                Page {meta.current_page} of {meta.last_page}
+                <span className="pagination-total">{meta.total} products</span>
               </span>
               <button
                 type="button"
+                className="pagination-btn"
                 onClick={() => setPage((p) => Math.min(meta.last_page, p + 1))}
                 disabled={meta.current_page >= meta.last_page}
               >

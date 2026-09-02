@@ -18,11 +18,16 @@ Next.js  --poll every 30s-->  Laravel API  --GET /proxy-->  proxy-manager (Go)
 ```
 
 - **Laravel** fetches the target page (via a proxy from the Go service, if one's
-  available), parses it, and stores the result.
-- **proxy-manager** hands out proxy addresses in round-robin order and stops
-  handing out ones that keep failing.
-- **Next.js** just polls Laravel's `/api/products` and renders a grid — it
-  never talks to the Go service directly.
+  available), parses it, and stores the result. If a proxy fails or times out
+  mid-request, it retries against a different proxy from the pool (up to 4
+  attempts) before giving up on that URL.
+- **proxy-manager** actively verifies every proxy before handing it out —
+  each one is test-fetched through a bounded pool of goroutines on startup,
+  and re-checked every 15 minutes — rather than trusting the seed list on
+  faith. It also stops handing out proxies that keep failing on real
+  requests.
+- **Next.js** just polls Laravel's `/api/products` and renders a paginated
+  grid — it never talks to the Go service directly.
 
 Note: **if the Go service isn't running or its pool is empty, Laravel just
 fetches directly** — nothing hard-fails without it.
@@ -68,8 +73,15 @@ Optional env vars:
 
 create a free-proxy-list.txt
 
-Without `free-proxy-list.txt`, the pool starts empty and Laravel falls back to
-direct requests — fine for local testing.
+Without `free-proxy-list.txt`, there's nothing to verify and the pool stays
+empty — Laravel falls back to direct requests, which is fine for local
+testing.
+
+With a seed file present, the pool still starts empty on boot: each address
+is verified concurrently in the background (a quick HTTPS test-fetch per
+proxy) and only added once it passes, so this can take anywhere from a few
+seconds to a couple of minutes depending on list size. `GET /proxy` returns
+503 gracefully in the meantime.
 
 ### 3. Frontend (Next.js)
 
@@ -92,8 +104,8 @@ Visit `http://localhost:3000/products`.
 
 | Method | Path | Body | Returns |
 |--------|------|------|---------|
-| GET | `/api/products` | — | All scraped products with images |
-| POST | `/api/products/scrape` | `{"url": "https://..."}` | The newly scraped + saved product |
+| GET | `/api/products` | — | Paginated products (10/page) with images. Standard Laravel paginator shape: `{data, links, meta}`. Accepts `?page=` |
+| POST | `/api/products/scrape` | `{"urls": ["https://...", "https://..."]}` (1–20 URLs) | `{"results": [{"url", "status": "success"\|"error", "product"?, "message"?}]}`. HTTP 201 if all succeeded, 207 if partial, 422 if all failed |
 
 ## Testing the scrape manually
 
@@ -101,5 +113,22 @@ Visit `http://localhost:3000/products`.
 curl -X POST http://127.0.0.1:8000/api/products/scrape \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
-  -d '{"url": "https://www.jumia.com.eg/<some-product-page>.html"}'
+  -d '{"urls": ["https://www.jumia.com.eg/<some-product-page>.html"]}'
 ```
+
+Batching multiple URLs in one call:
+
+```
+curl -X POST http://127.0.0.1:8000/api/products/scrape \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{"urls": [
+        "https://www.jumia.com.eg/<product-1>.html",
+        "https://www.jumia.com.eg/<product-2>.html"
+      ]}'
+```
+
+Note: scraping is synchronous per request, and a single URL can take up to
+~40s worst case (network fetch + up to 4 proxy retries). Batches are capped
+at 20 URLs to keep requests from timing out — for larger volumes, this would
+need a queued-job version rather than the current synchronous one.

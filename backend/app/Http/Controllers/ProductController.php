@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use App\Services\ProductScraperService;
 use Illuminate\Http\JsonResponse;
@@ -15,7 +16,7 @@ class ProductController extends Controller
             ->latest('created_at')
             ->paginate(10);
 
-        return response()->json($products);
+        return ProductResource::collection($products)->response();
     }
 
     public function scrape(Request $request, ProductScraperService $scraper): JsonResponse

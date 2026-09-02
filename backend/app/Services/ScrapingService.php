@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Log;
 
 class ScrapingService
 {
@@ -70,6 +71,13 @@ class ScrapingService
             }
 
             $status = $response->getStatusCode();
+
+            Log::info('scrape.proxy_used', [
+                'url'    => $url,
+                'proxy'  => $proxy ?? 'direct',
+                'status' => $status,
+                'attempt'=> $attempt,
+            ]);
 
             if ($status === 200) {
                 if ($proxy) {
